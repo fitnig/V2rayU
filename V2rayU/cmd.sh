@@ -8,10 +8,16 @@
 
 cd `dirname "${BASH_SOURCE[0]}"`
 
-cmd="../MacOS/V2rayUTool"
+cmd="./V2rayUTool"
 
 sudo chown root:admin ${cmd}
 sudo chmod a+rx ${cmd}
 sudo chmod +s ${cmd}
 
-echo done1
+cmd="./V2rayUHelper"
+
+sudo chown root:admin ${cmd}
+sudo chmod a+rx ${cmd}
+sudo chmod +s ${cmd}
+
+echo 'done'

@@ -126,7 +126,7 @@ struct V2rayInboundSniffing: Codable {
         case http
     }
 
-    var enabled: Bool = false
+    var enabled: Bool = true
     var destOverride: [dest] = [.tls, .http]
 }
 
@@ -159,7 +159,6 @@ struct V2rayInboundSocks: Codable {
     var accounts: [V2rayInboundSockAccount]?
     var udp: Bool = true
     var ip: String?
-    var timeout: Int = 360
     var userLevel: Int?
 }
 

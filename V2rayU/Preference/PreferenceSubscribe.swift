@@ -9,12 +9,14 @@
 import Cocoa
 import Preferences
 import Alamofire
+import SwiftyJSON
 
 final class PreferenceSubscribeViewController: NSViewController, PreferencePane {
     let preferencePaneIdentifier = PreferencePane.Identifier.subscribeTab
     let preferencePaneTitle = "Subscribe"
     let toolbarItemIcon = NSImage(named: NSImage.userAccountsName)!
     let tableViewDragType: String = "v2ray.subscribe"
+    var tip: String = ""
 
     @IBOutlet weak var remark: NSTextField!
     @IBOutlet weak var url: NSTextField!
@@ -24,6 +26,7 @@ final class PreferenceSubscribeViewController: NSViewController, PreferencePane 
     @IBOutlet weak var subscribeView: NSView!
     @IBOutlet var logArea: NSTextView!
     @IBOutlet weak var hideLogs: NSButton!
+
 
     // our variable
     override var nibName: NSNib.Name? {
@@ -41,6 +44,16 @@ final class PreferenceSubscribeViewController: NSViewController, PreferencePane 
 
         // reload tableview
         V2raySubscribe.loadConfig()
+
+        // set global hotkey
+        let notifyCenter = NotificationCenter.default
+        notifyCenter.addObserver(forName: NOTIFY_UPDATE_SubSync, object: nil, queue: nil, using: {
+            notice in
+            self.tip += notice.object as? String ?? ""
+
+            self.logArea.string = self.tip
+            self.logArea.scrollToEndOfDocument("")
+        })
     }
 
     @IBAction func addSubscribe(_ sender: Any) {
@@ -55,9 +68,18 @@ final class PreferenceSubscribeViewController: NSViewController, PreferencePane 
             return
         }
 
-        if !url.isValidUrl() {
+        // special char
+        let charSet = NSMutableCharacterSet()
+        charSet.formUnion(with: CharacterSet.urlQueryAllowed)
+        charSet.addCharacters(in: "#")
+
+        guard let rUrl = URL(string: url.addingPercentEncoding(withAllowedCharacters: charSet as CharacterSet)!) else {
             self.url.becomeFirstResponder()
-            print("url is invalid")
+            return
+        }
+
+        if rUrl.scheme == nil || rUrl.host == nil {
+            self.url.becomeFirstResponder()
             return
         }
 
@@ -80,7 +102,12 @@ final class PreferenceSubscribeViewController: NSViewController, PreferencePane 
     @IBAction func removeSubscribe(_ sender: Any) {
         let idx = self.tableView.selectedRow
         if self.tableView.selectedRow > -1 {
-            // remove
+            if let item = V2raySubscribe.loadSubItem(idx: idx) {
+                print("remove sub item", item.name, item.url)
+                // remove old v2ray servers by subscribe
+                V2rayServer.remove(subscribe: item.name)
+            }
+            // remove subscribe
             V2raySubscribe.remove(idx: idx)
 
             // selected prev row
@@ -115,95 +142,10 @@ final class PreferenceSubscribeViewController: NSViewController, PreferencePane 
         self.subscribeView.isHidden = true
         self.logView.isHidden = false
         self.logArea.string = ""
+        self.tip = ""
 
         // update Subscribe
-        self.sync()
-
-        // restore view
-//        self.logView.isHidden = true
-//        self.subscribeView.isHidden = false
-//        self.logArea.string = ""
-    }
-
-    // sync from Subscribe list
-    public func sync() {
-        let list = V2raySubscribe.list()
-
-        if list.count == 0 {
-            logTip(title: "fail: ", uri: "", informativeText: " please add Subscription Url ")
-        }
-
-        for item in list {
-            self.dlFromUrl(url: item.url)
-        }
-    }
-
-    public func dlFromUrl(url: String) {
-        Alamofire.request(url).responseString { response in
-            switch (response.result) {
-            case .success(_):
-                if let data = response.result.value {
-                    self.handle(base64Str: data)
-                }
-
-            case .failure(_):
-                print("Error message:", response.result.error ?? "")
-                break
-            }
-        }
-    }
-
-    func handle(base64Str: String) {
-        let strTmp = base64Str.base64Decoded()
-        if strTmp == nil {
-            return
-        }
-        let list = strTmp!.components(separatedBy: CharacterSet.newlines)
-        for item in list {
-            // import every server
-            self.importUri(uri: item.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-    }
-
-    func importUri(uri: String) {
-        if uri.count == 0 {
-            logTip(title: "fail: ", uri: uri, informativeText: "uri not found")
-            return
-        }
-
-        if URL(string: uri) == nil {
-            logTip(title: "fail: ", uri: uri, informativeText: "no found ss://, ssr://, vmess://")
-            return
-        }
-
-        if let importUri = ImportUri.importUri(uri: uri) {
-            if importUri.isValid {
-                // add server
-                V2rayServer.add(remark: importUri.remark, json: importUri.json, isValid: true, url: importUri.uri)
-                // refresh server
-                menuController.showServers()
-
-                // reload server
-                if menuController.configWindow != nil {
-                    menuController.configWindow.serversTableView.reloadData()
-                }
-
-                logTip(title: "success: ", uri: uri, informativeText: importUri.remark)
-            } else {
-                logTip(title: "fail: ", uri: uri, informativeText: importUri.error)
-            }
-
-            return
-        }
-    }
-
-    func logTip(title: String = "", uri: String = "", informativeText: String = "") {
-        self.logArea.string += title + informativeText + "\n"
-        self.logArea.string += "url: " + uri
-        self.logArea.string += "\n\n"
-        self.logArea.scrollPageDown("")
-
-        print("log", title + informativeText + " -- uri:" + uri)
+        V2raySubSync().sync()
     }
 }
 
